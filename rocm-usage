@@ -1,0 +1,28 @@
+# Parse the output to get PIDs and associated GPU devices
+declare -A device_map
+current_pid=""
+device_count=0
+
+while IFS= read -r line; do
+  if [[ $line =~ PID\ ([0-9]+)\ is\ using\ ([0-9]+)\ DRM\ device\(s\): ]]; then
+    current_pid=${BASH_REMATCH[1]}
+    device_count=${BASH_REMATCH[2]}
+  elif [[ $line =~ ^[0-9]+ ]]; then
+    devices=($line)
+    for device in "${devices[@]}"; do
+      device_map[$device]+="(PID: $current_pid, User: $(ps -o user= -p $current_pid 2>/dev/null)) "
+    done
+  fi
+done <<< "$output"
+
+# Check if any devices were found
+if [ ${#device_map[@]} -eq 0 ]; then
+  echo "No processes found using the GPUs"
+  exit 0
+fi
+
+# Print the information grouped by device
+echo "Processes using the GPUs grouped by devices:"
+for device in "${!device_map[@]}"; do
+  echo "Device: $device, ${device_map[$device]}"
+done
