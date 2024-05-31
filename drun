@@ -15,5 +15,5 @@ docker run \
   --security-opt seccomp=unconfined \
   -it \
   --network=host \
-  --name="automoe" \
+  --name="your_container_name" \
   your_docker_image
