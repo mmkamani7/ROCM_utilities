@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define the list of script names
-SCRIPTS=("rocm-usage" "drun")
+SCRIPTS=("rocm-usage" "rocm-drun")
 # Check if a target directory is provided as an argument, otherwise use ~/bin
 TARGET_DIR=${1:-"$HOME/bin"}
 # Ensure the target directory exists
