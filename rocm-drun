@@ -3,21 +3,38 @@
 # Default values
 DEFAULT_CONTAINER_NAME="my_container"
 DEFAULT_IMAGE_NAME="rocm/pytorch"
+ALL_GPUS=true
 
 # Function to display usage
 usage() {
-  echo "Usage: $0 [-n container_name] [-i image_name]"
+  echo "Usage: $0 [-n container_name] [-i image_name] [--amd gpu_ids]"
+  echo "  -n container_name  Name of the Docker container (default: $DEFAULT_CONTAINER_NAME)"
+  echo "  -i image_name      Name of the Docker image (default: $DEFAULT_IMAGE_NAME)"
+  echo "  --amd gpu_ids      Comma-separated list of GPU IDs to use (e.g., 0,1,2,3). Default is to use all GPUs."
   exit 1
 }
 
 # Parse command-line options
-while getopts ":n:i:" opt; do
+while getopts ":n:i:-:" opt; do
   case ${opt} in
     n )
       CONTAINER_NAME=$OPTARG
       ;;
     i )
       IMAGE_NAME=$OPTARG
+      ;;
+    - )
+      case "${OPTARG}" in
+        amd)
+          val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+          GPU_IDS=$val
+          ALL_GPUS=false
+          ;;
+        *)
+          echo "Invalid option: --$OPTARG" 1>&2
+          usage
+          ;;
+      esac
       ;;
     \? )
       echo "Invalid option: -$OPTARG" 1>&2
@@ -43,12 +60,29 @@ fi
 
 USER=$(whoami)
 
+# Function to build the --device arguments for GPUs
+build_gpu_devices() {
+  if [ "$ALL_GPUS" = true ]; then
+    echo "--device=/dev/dri"
+  else
+    devices=""
+    for gpu_id in ${GPU_IDS//,/ }; do
+      device_id=$((128 + gpu_id))
+      devices+="--device=/dev/dri/renderD${device_id} "
+    done
+    echo $devices
+  fi
+}
+
+# Generate the GPU devices argument
+GPU_DEVICES=$(build_gpu_devices)
+
 # Run the docker command
 docker run \
   -v /dev/shm:/dev/shm \
   -w /home/$USER \
   --device=/dev/kfd \
-  --device=/dev/dri \
+  $GPU_DEVICES \
   --group-add video \
   --security-opt seccomp=unconfined \
   -it \
