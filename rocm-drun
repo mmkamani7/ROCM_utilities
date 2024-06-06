@@ -35,21 +35,23 @@ shift $((OPTIND -1))
 CONTAINER_NAME=${CONTAINER_NAME:-$DEFAULT_CONTAINER_NAME}
 IMAGE_NAME=${IMAGE_NAME:-$DEFAULT_IMAGE_NAME}
 
+# Ensure the IMAGE_NAME is provided
+if [ -z "$IMAGE_NAME" ]; then
+  echo "Error: Docker image name is required."
+  usage
+fi
+
 USER=$(whoami)
 
+# Run the docker command
 docker run \
   -v /dev/shm:/dev/shm \
   -w /home/$USER \
   --device=/dev/kfd \
   --device=/dev/dri \
-    # Use this instead for partial GPU access (Numbers starts from 128)
-    #   --device=/dev/dri/renderD128 \
-    #   --device=/dev/dri/renderD129 \
-    #   --device=/dev/dri/renderD130 \
-    #   --device=/dev/dri/renderD131 \
   --group-add video \
   --security-opt seccomp=unconfined \
   -it \
   --network=host \
   --name="$CONTAINER_NAME" \
-  $IMAGE_NAME
+  "$IMAGE_NAME"
