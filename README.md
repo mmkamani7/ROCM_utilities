@@ -15,5 +15,12 @@ chmod +x install.sh
 The you can run the following commands:
 
 - `rocm-usage`: That will display which process ids and users are currently running on what GPU
-- `drun`: An alias for `docker run` with some optional instructions to load all necessary GPUs, as well as volumes from the main env.
+- `rocm-drun`: An alias for `docker run` with some optional instructions to load all necessary GPUs, as well as volumes from the main env.
+
+### rocm-drun
+To use this script follow this instruction:
+```cli
+rocm-drun -n <your_container_name> -i <image_name> --amd 0,1,2,3
+```
+where `--amd` tag indicates which GPUs to use. If this is not passed, all the GPUs will be used.
 
