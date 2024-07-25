@@ -7,46 +7,61 @@ ALL_GPUS=true
 
 # Function to display usage
 usage() {
-  echo "Usage: $0 [-n container_name] [-i image_name] [--amd gpu_ids]"
-  echo "  -n container_name  Name of the Docker container (default: $DEFAULT_CONTAINER_NAME)"
-  echo "  -i image_name      Name of the Docker image (default: $DEFAULT_IMAGE_NAME)"
-  echo "  --amd gpu_ids      Comma-separated list of GPU IDs to use (e.g., 0,1,2,3). Default is to use all GPUs."
+  echo "Usage: $0 [OPTIONS] [COMMAND] [ARG...]"
+  echo
+  echo "Options:"
+  echo "  -n, --name NAME        Assign a name to the container"
+  echo "  -i, --image IMAGE      Specify the Docker image to use"
+  echo "  --amd GPU_IDS          Comma-separated list of GPU IDs to use (e.g., 0,1,2,3). Default is to use all GPUs."
+  echo
+  echo "This script supports all standard Docker options. For example:"
+  echo "  -v, --volume LIST      Bind mount a volume"
+  echo "  -e, --env LIST         Set environment variables"
+  echo "  -p, --publish LIST     Publish a container's port(s) to the host"
+  echo
+  echo "For a full list of Docker options, refer to the Docker documentation."
   exit 1
 }
 
+# Initialize arrays to store Docker options and command
+DOCKER_OPTIONS=()
+DOCKER_COMMAND=()
+
 # Parse command-line options
-while getopts ":n:i:-:" opt; do
-  case ${opt} in
-    n )
-      CONTAINER_NAME=$OPTARG
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -n|--name)
+      CONTAINER_NAME="$2"
+      shift 2
       ;;
-    i )
-      IMAGE_NAME=$OPTARG
+    -i|--image)
+      IMAGE_NAME="$2"
+      shift 2
       ;;
-    - )
-      case "${OPTARG}" in
-        amd)
-          val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
-          GPU_IDS=$val
-          ALL_GPUS=false
-          ;;
-        *)
-          echo "Invalid option: --$OPTARG" 1>&2
-          usage
-          ;;
-      esac
+    --amd)
+      GPU_IDS="$2"
+      ALL_GPUS=false
+      shift 2
       ;;
-    \? )
-      echo "Invalid option: -$OPTARG" 1>&2
+    -h|--help)
       usage
       ;;
-    : )
-      echo "Invalid option: -$OPTARG requires an argument" 1>&2
-      usage
+    -*)
+      # Capture all other options starting with '-' as Docker options
+      DOCKER_OPTIONS+=("$1")
+      if [[ "$2" != -* && $# -gt 1 ]]; then
+        DOCKER_OPTIONS+=("$2")
+        shift
+      fi
+      shift
+      ;;
+    *)
+      # All non-option arguments are treated as the command to run in the container
+      DOCKER_COMMAND+=("$1")
+      shift
       ;;
   esac
 done
-shift $((OPTIND -1))
 
 # Set default values if not provided
 CONTAINER_NAME=${CONTAINER_NAME:-$DEFAULT_CONTAINER_NAME}
@@ -54,7 +69,7 @@ IMAGE_NAME=${IMAGE_NAME:-$DEFAULT_IMAGE_NAME}
 
 # Ensure the IMAGE_NAME is provided
 if [ -z "$IMAGE_NAME" ]; then
-  echo "Error: Docker image name is required."
+  echo "Error: Docker image name is required. Use -i or --image to specify it."
   usage
 fi
 
@@ -77,15 +92,32 @@ build_gpu_devices() {
 # Generate the GPU devices argument
 GPU_DEVICES=$(build_gpu_devices)
 
+# Build the Docker command
+DOCKER_CMD="docker run"
+
+# Add default options
+DOCKER_CMD+=" -v /dev/shm:/dev/shm"
+DOCKER_CMD+=" -w /home/$USER"
+DOCKER_CMD+=" --device=/dev/kfd"
+DOCKER_CMD+=" $GPU_DEVICES"
+DOCKER_CMD+=" --group-add video"
+DOCKER_CMD+=" --security-opt seccomp=unconfined"
+DOCKER_CMD+=" -it"
+DOCKER_CMD+=" --network=host"
+DOCKER_CMD+=" --name \"$CONTAINER_NAME\""
+
+# Add additional Docker options
+for option in "${DOCKER_OPTIONS[@]}"; do
+  DOCKER_CMD+=" $option"
+done
+
+# Add the image name
+DOCKER_CMD+=" \"$IMAGE_NAME\""
+
+# Add the command to run in the container, if any
+if [ ${#DOCKER_COMMAND[@]} -gt 0 ]; then
+  DOCKER_CMD+=" ${DOCKER_COMMAND[@]}"
+fi
+
 # Run the docker command
-docker run \
-  -v /dev/shm:/dev/shm \
-  -w /home/$USER \
-  --device=/dev/kfd \
-  $GPU_DEVICES \
-  --group-add video \
-  --security-opt seccomp=unconfined \
-  -it \
-  --network=host \
-  --name="$CONTAINER_NAME" \
-  "$IMAGE_NAME"
+eval $DOCKER_CMD
