@@ -1,28 +1,47 @@
-# Parse the output to get PIDs and associated GPU devices
-declare -A device_map
-current_pid=""
-device_count=0
+#!/bin/bash
 
-while IFS= read -r line; do
-  if [[ $line =~ PID\ ([0-9]+)\ is\ using\ ([0-9]+)\ DRM\ device\(s\): ]]; then
-    current_pid=${BASH_REMATCH[1]}
-    device_count=${BASH_REMATCH[2]}
-  elif [[ $line =~ ^[0-9]+ ]]; then
-    devices=($line)
-    for device in "${devices[@]}"; do
-      device_map[$device]+="(PID: $current_pid, User: $(ps -o user= -p $current_pid 2>/dev/null)) "
-    done
-  fi
-done <<< "$output"
+# Function to check if rocm-smi is available
+check_rocm_smi() {
+    if ! command -v rocm-smi &> /dev/null; then
+        echo "rocm-smi could not be found. Please ensure ROCm is installed correctly."
+        exit 1
+    fi
+}
 
-# Check if any devices were found
-if [ ${#device_map[@]} -eq 0 ]; then
-  echo "No processes found using the GPUs"
-  exit 0
-fi
+# Function to get GPU usage information
+get_gpu_usage() {
+    rocm-smi --showpids
+}
 
-# Print the information grouped by device
-echo "Processes using the GPUs grouped by devices:"
-for device in "${!device_map[@]}"; do
-  echo "Device: $device, ${device_map[$device]}"
-done
+# Function to parse GPU usage and get user information
+parse_gpu_usage() {
+    local gpu_usage="$1"
+    declare -A device_map
+    local found_processes=false
+
+    while IFS= read -r line; do
+        if [[ $line =~ ^([0-9]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([0-9]+) ]]; then
+            pid="${BASH_REMATCH[1]}"
+            process_name="${BASH_REMATCH[2]}"
+            gpu="${BASH_REMATCH[3]}"
+            user=$(ps -o user= -p "$pid" 2>/dev/null)
+            device_map[$gpu]+="(PID: $pid, User: $user, Process: $process_name) "
+            found_processes=true
+        fi
+    done <<< "$gpu_usage"
+
+    # Print the information grouped by device
+    echo "Processes using the GPUs grouped by devices:"
+    if [ "$found_processes" = false ]; then
+        echo "No processes found using the GPUs"
+    else
+        for device in "${!device_map[@]}"; do
+            echo "GPU $device: ${device_map[$device]}"
+        done
+    fi
+}
+
+# Main execution
+check_rocm_smi
+gpu_usage=$(get_gpu_usage)
+parse_gpu_usage "$gpu_usage"
